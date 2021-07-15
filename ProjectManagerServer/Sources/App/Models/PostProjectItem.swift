@@ -25,3 +25,24 @@ extension PostProjectItem: Validatable {
         validations.add("deadlineDate", as: Date.self, required: true)
     }
 }
+
+struct NestedPostProjectItem: Content {
+    let postProjectItems: [PostProjectItem]
+    
+    init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        self.postProjectItems = try container.decode([PostProjectItem].self)
+    }
+}
+
+extension NestedPostProjectItem: Validatable {
+    static func validations(_ validations: inout Validations) {
+        validations.add("postProjectItems") { item in
+            item.add("title", as: String.self, required: true)
+            item.add("content", as: String.self, is: .count(...1000), required: true)
+            item.add("progress", as: String.self, is: .in("todo", "doing", "done"), required: true)
+            item.add("index", as: Int.self, required: true)
+            item.add("deadlineDate", as: Date.self, required: true)
+        }
+    }
+}

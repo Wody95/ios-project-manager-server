@@ -29,49 +29,53 @@ struct ProjectItemController: RouteCollection {
         return ProjectItem.query(on: req.db).filter(\.$progress ==  progress).all()
     }
     
-    func create(req: Request) throws -> EventLoopFuture<ProjectItem> {
+    func create(req: Request) throws -> EventLoopFuture<[ProjectItem]> {
         guard req.headers.contentType == .json else {
             throw HTTPError.invalidContentType
         }
         
-        do {
-            try PostProjectItem.validate(content: req)
-        } catch {
-            throw HTTPError.validationFailedWhileCreating
-        }
+//        do {
+//            try NestedPostProjectItem.validate(content: req)
+//        } catch {
+//            throw HTTPError.validationFailedWhileCreating
+//        }
         
-        let exist = try req.content.decode(PostProjectItem.self)
-        let newProjectItem = ProjectItem(exist)
+        let exist = try req.content.decode([PostProjectItem].self)
         
-        return newProjectItem.save(on: req.db).map { (result) -> ProjectItem in
-            return newProjectItem
+        
+        let newProjectItems: [ProjectItem] = exist.map { ProjectItem($0) }
+        
+        return newProjectItems.map { $0.create(on: req.db) }.flatten(on: req.eventLoop).map { (result) -> [ProjectItem] in
+            return newProjectItems
         }
     }
     
-    func update(req: Request) throws -> EventLoopFuture<ProjectItem> {
+    func update(req: Request) throws -> EventLoopFuture<[ProjectItem]> {
         guard req.headers.contentType == .json else {
             throw HTTPError.invalidContentType
         }
         
-        do {
-            try PatchProjectItem.validate(content: req)
-        } catch {
-            throw HTTPError.validationFailedWhileUpdating
-        }
+//        do {
+//            try PatchProjectItem.validate(content: req)
+//        } catch {
+//            throw HTTPError.validationFailedWhileUpdating
+//        }
         
-        let exist = try req.content.decode(PatchProjectItem.self)
+        let exist = try req.content.decode([PatchProjectItem].self)
         
-        return ProjectItem.find(exist.id, on: req.db)
+        return exist.map { updated -> EventLoopFuture<ProjectItem> in
+            ProjectItem.find(updated.id, on: req.db)
             .unwrap(or: HTTPError.invalidID)
-            .flatMap { item in
-                if let title = exist.title { item.title = title }
-                if let content = exist.content { item.content = content }
-                if let progress = exist.progress { item.progress = progress }
-                if let deadlineDate = exist.deadlineDate { item.deadlineDate = deadlineDate }
-                if let index = exist.index { item.index = index }
+            .flatMap { item -> EventLoopFuture<ProjectItem> in
+                if let title = updated.title { item.title = title }
+                if let content = updated.content { item.content = content }
+                if let progress = updated.progress { item.progress = progress }
+                if let deadlineDate = updated.deadlineDate { item.deadlineDate = deadlineDate }
+                if let index = updated.index { item.index = index }
                 
-                return item.update(on: req.db).map { return item }
+                return item.update(on: req.db).map { item }
             }
+        }.flatten(on: req.eventLoop)
     }
     
     func delete(req: Request) throws -> EventLoopFuture<HTTPStatus> {
@@ -79,10 +83,13 @@ struct ProjectItemController: RouteCollection {
             throw HTTPError.invalidContentType
         }
         
-        let exist = try req.content.decode(DeleteProjectItem.self)
-        return ProjectItem.find(exist.id, on: req.db)
-            .unwrap(or: HTTPError.invalidID)
-            .flatMap { $0.delete(on: req.db) }
-            .transform(to: .ok)
+        let exist = try req.content.decode([DeleteProjectItem].self)
+        
+        return exist.map {
+            ProjectItem.find($0.id, on: req.db)
+                .unwrap(or: HTTPError.invalidID)
+                .flatMap { $0.delete(on: req.db) }
+        }.flatten(on: req.eventLoop)
+        .transform(to: .ok)
     }
 }
