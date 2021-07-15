@@ -34,14 +34,16 @@ struct ProjectItemController: RouteCollection {
             throw HTTPError.invalidContentType
         }
         
-//        do {
-//            try NestedPostProjectItem.validate(content: req)
-//        } catch {
-//            throw HTTPError.validationFailedWhileCreating
-//        }
+        var exist: [PostProjectItem]
         
-        let exist = try req.content.decode([PostProjectItem].self)
-        
+        do {
+            exist = try req.content.decode([PostProjectItem].self)
+            for postProjectItem in exist {
+                try PostProjectItem.validate(json: String(data: JSONEncoder().encode(postProjectItem), encoding: .utf8) ?? "")
+            }
+        } catch {
+            throw HTTPError.validationFailedWhileCreating
+        }
         
         let newProjectItems: [ProjectItem] = exist.map { ProjectItem($0) }
         
@@ -55,13 +57,19 @@ struct ProjectItemController: RouteCollection {
             throw HTTPError.invalidContentType
         }
         
-//        do {
-//            try PatchProjectItem.validate(content: req)
-//        } catch {
-//            throw HTTPError.validationFailedWhileUpdating
-//        }
+        var exist: [PatchProjectItem]
         
-        let exist = try req.content.decode([PatchProjectItem].self)
+        do {
+            exist = try req.content.decode([PatchProjectItem].self)
+            for patchProjectItem in exist {
+                guard let encoded = String(data: try JSONEncoder().encode(patchProjectItem), encoding: .utf8) else {
+                    throw HTTPError.validationFailedWhileUpdating
+                }
+                try PatchProjectItem.validate(json: encoded)
+            }
+        } catch {
+            throw HTTPError.validationFailedWhileUpdating
+        }
         
         return exist.map { updated -> EventLoopFuture<ProjectItem> in
             ProjectItem.find(updated.id, on: req.db)
